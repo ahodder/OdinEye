@@ -120,12 +120,16 @@ main :: proc() {
 }
 
 proc_matches_filter :: proc(astProc: ^ast.Proc_Type) -> bool {
-    if len(astProc.params.list) != len(config.desiredFieldTypesOrNames) {
+    if (astProc.params != nil && len(astProc.params.list) != len(config.desiredFieldTypesOrNames)) ||
+        (astProc.results != nil && len(astProc.results.list) != len(config.desiredReturnTypesOrNames)) {
         return false
     }
 
+    foundArgs := 0
+    foundRets := 0
+
     // The params can come in any order, and should be pretty short length-wise
-    for i := 0; i < len(astProc.params.list); i += 1 {
+    for i := 0; astProc.params != nil && i < len(astProc.params.list); i += 1 {
         found := false
         for j := 0; j < len(config.desiredFieldTypesOrNames); j += 1 {
             thing := astProc.params.list[i].type
@@ -142,12 +146,33 @@ proc_matches_filter :: proc(astProc: ^ast.Proc_Type) -> bool {
             target := config.desiredFieldTypesOrNames[j]
 
             if strings.compare(str, target) == 0 {
-                return true
+                foundArgs += 1
             }
         }
     }
 
-    return false
+    for i := 0; astProc.results != nil && i < len(astProc.results.list); i += 1 {
+        for j := 0; j < len(config.desiredReturnTypesOrNames); j += 1 {
+            thing := astProc.results.list[i].type
+            str : string
+            // The Odin ast hides the proc idents across multiple expressions. This should handle normal and pointer types
+            #partial switch t in &astProc.results.list[i].type.derived {
+            case ^ast.Ident:
+                str = t.name
+            case ^ast.Pointer_Type:
+                selector := cast(^ast.Selector_Expr)t.elem
+                str = selector.field.name
+            }
+
+            target := config.desiredReturnTypesOrNames[j]
+
+            if strings.compare(str, target) == 0 {
+                foundRets += 1
+            }
+        }
+    }
+
+    return foundArgs == len(config.desiredFieldTypesOrNames) && foundRets == len(config.desiredReturnTypesOrNames)
 }
 
 process_command_whereis :: proc(argIndex: int) {
@@ -200,4 +225,16 @@ process_proc_rets :: proc(argIndex: int) {
     }
 
     config.desiredReturnTypesOrNames = parts
+}
+
+intret :: proc() -> int {
+    return 0
+}
+
+twointparamoneretparams :: proc(a: int, b: int) -> int {
+    return 0
+}
+
+intparamsintret :: proc(a: int) -> int {
+    return 0
 }
